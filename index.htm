@@ -216,6 +216,18 @@
           </label>
         </div>
 
+        <!-- Toggle Analógico Horizontal Apenas -->
+        <div class="flex items-center justify-between p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+          <div>
+            <div class="font-bold text-slate-200">Analógico Esquerda/Direita Apenas</div>
+            <div class="text-slate-400 text-[11px]">Restringe o movimento dos analógicos apenas para a esquerda e direita.</div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="toggle-horizontal-joystick" class="sr-only peer">
+            <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+          </label>
+        </div>
+
         <!-- Estatísticas / Progresso -->
         <div class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
           <div class="font-bold text-slate-200">Progresso Salvo</div>
@@ -334,7 +346,8 @@
     // Configurações e Progresso Padrão
     let gameSettings = {
       unlockedLevel: 1,
-      joysticksEnabled: false // Detectará toque automaticamente se for primeiro acesso
+      joysticksEnabled: false, // Detectará toque automaticamente se for primeiro acesso
+      horizontalJoystickOnly: false
     };
 
     function loadGameData() {
@@ -345,6 +358,9 @@
           if (parsed.unlockedLevel) gameSettings.unlockedLevel = parsed.unlockedLevel;
           if (typeof parsed.joysticksEnabled === 'boolean') {
             gameSettings.joysticksEnabled = parsed.joysticksEnabled;
+          }
+          if (typeof parsed.horizontalJoystickOnly === 'boolean') {
+            gameSettings.horizontalJoystickOnly = parsed.horizontalJoystickOnly;
           }
         } else {
           // Se for primeira vez, auto-ativa joysticks caso detecte dispositivo touch
@@ -977,7 +993,10 @@
 
       function updateStick(touch, center, stickEl, inputObj) {
         const dx = touch.clientX - center.x;
-        const dy = touch.clientY - center.y;
+        let dy = touch.clientY - center.y;
+        if (gameSettings.horizontalJoystickOnly) {
+          dy = 0;
+        }
         const dist = Math.hypot(dx, dy);
 
         const angle = Math.atan2(dy, dx);
@@ -1275,6 +1294,8 @@
       // Atualizar estado do checkbox nas configurações
       const joystickToggle = document.getElementById('toggle-joysticks');
       joystickToggle.checked = gameSettings.joysticksEnabled;
+      const horizontalJoystickToggle = document.getElementById('toggle-horizontal-joystick');
+      if (horizontalJoystickToggle) horizontalJoystickToggle.checked = gameSettings.horizontalJoystickOnly;
 
       // Botão Iniciar Jogo (Menu Principal)
       document.getElementById('btn-play-game').addEventListener('click', () => {
@@ -1295,6 +1316,7 @@
         returnToGameOnSettingsClose = false;
         document.getElementById('saved-levels-count').innerText = unlockedLevel;
         document.getElementById('toggle-joysticks').checked = gameSettings.joysticksEnabled;
+        document.getElementById('toggle-horizontal-joystick').checked = gameSettings.horizontalJoystickOnly;
         document.getElementById('main-menu').classList.add('hidden');
         document.getElementById('settings-menu').classList.remove('hidden');
       });
@@ -1309,6 +1331,7 @@
         returnToGameOnSettingsClose = true;
         document.getElementById('saved-levels-count').innerText = unlockedLevel;
         document.getElementById('toggle-joysticks').checked = gameSettings.joysticksEnabled;
+        document.getElementById('toggle-horizontal-joystick').checked = gameSettings.horizontalJoystickOnly;
         document.getElementById('hud').classList.add('hidden');
         document.getElementById('touch-controls').classList.add('hidden');
         document.getElementById('settings-menu').classList.remove('hidden');
@@ -1336,6 +1359,7 @@
 
       document.getElementById('btn-save-settings').addEventListener('click', () => {
         gameSettings.joysticksEnabled = document.getElementById('toggle-joysticks').checked;
+        gameSettings.horizontalJoystickOnly = document.getElementById('toggle-horizontal-joystick').checked;
         saveGameData();
         closeSettingsMenu();
       });
