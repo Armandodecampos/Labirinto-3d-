@@ -1,0 +1,1420 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="h-full bg-slate-950">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Labirinto 3D - Jogo de Primeira Pessoa</title>
+  <!-- Tailwind CSS para interface fluida e moderna -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js para renderização 3D -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- Google Fontes para tipografia estilizada -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    body {
+      font-family: 'Rajdhani', sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+      overflow: hidden;
+    }
+    .font-orbitron {
+      font-family: 'Orbitron', sans-serif;
+    }
+    /* Retículo central (Crosshair) */
+    .crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 8px;
+      height: 8px;
+      background-color: rgba(255, 255, 255, 0.7);
+      border: 1px solid rgba(0, 0, 0, 0.5);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 20;
+    }
+    /* Estilização personalizada de modais e vidros */
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+    .btn-glow {
+      transition: all 0.25s ease;
+      box-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
+    }
+    .btn-glow:hover {
+      box-shadow: 0 0 25px rgba(59, 130, 246, 0.7);
+      transform: translateY(-2px);
+    }
+    .btn-glow-emerald:hover {
+      box-shadow: 0 0 25px rgba(16, 185, 129, 0.7);
+      transform: translateY(-2px);
+    }
+    /* Canvas do Mini-mapa */
+    #minimap {
+      border: 2px solid rgba(59, 130, 246, 0.4);
+      background-color: rgba(10, 15, 30, 0.85);
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.8);
+    }
+    /* Estilos para os Analógicos Virtuais (Touch Mobile) */
+    .joystick-base {
+      width: 110px;
+      height: 110px;
+      border-radius: 50%;
+      background: rgba(15, 23, 42, 0.65);
+      border: 2px solid rgba(59, 130, 246, 0.5);
+      backdrop-filter: blur(8px);
+      position: relative;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.6);
+    }
+    .joystick-stick {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.95) 0%, rgba(37, 99, 235, 0.75) 100%);
+      border: 2px solid rgba(147, 197, 253, 0.8);
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.6);
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body class="h-full w-full relative bg-slate-950 text-slate-100 overflow-hidden touch-none select-none">
+
+  <!-- Renderizador 3D -->
+  <div id="game-container" class="w-full h-full absolute inset-0 z-0"></div>
+
+  <!-- Mira central em Primeira Pessoa -->
+  <div id="crosshair" class="crosshair hidden"></div>
+
+  <!-- Interface em Tempo de Jogo (HUD) -->
+  <div id="hud" class="absolute inset-0 pointer-events-none hidden z-10 flex flex-col justify-between p-4 md:p-6">
+    <!-- Topo do HUD: Estatísticas e Controles -->
+    <div class="flex justify-between items-start">
+      <!-- Painel de Informações da Fase -->
+      <div class="glass-panel rounded-xl p-3 md:p-4 border border-slate-700/50 flex flex-col gap-1">
+        <div class="flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></span>
+          <h2 class="text-xs uppercase tracking-widest text-slate-400 font-bold">Nível Atual</h2>
+        </div>
+        <div class="text-2xl md:text-3xl font-orbitron font-black text-blue-400" id="hud-level">Fase 1</div>
+        <div class="text-xs text-slate-400" id="hud-size">Tamanho: 5 x 5</div>
+      </div>
+
+      <!-- Cronômetro e Bússola / Distância -->
+      <div class="glass-panel rounded-xl p-3 md:p-4 border border-slate-700/50 flex flex-col items-center">
+        <span class="text-xs uppercase tracking-widest text-slate-400 font-bold">Tempo</span>
+        <div class="text-2xl md:text-3xl font-orbitron font-bold text-amber-400" id="hud-timer">00:00</div>
+      </div>
+
+      <!-- Botão de Configurações (Engrenagem + Legenda ESC) -->
+      <div class="flex flex-col items-center gap-1 pointer-events-auto">
+        <button id="btn-hud-settings" class="glass-panel p-3 rounded-xl border border-slate-700/50 hover:bg-slate-800/90 text-slate-300 hover:text-blue-400 transition flex items-center justify-center cursor-pointer shadow-lg active:scale-95 group" title="Configurações (ESC)">
+          <svg class="w-7 h-7 transform group-hover:rotate-45 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+          </svg>
+        </button>
+        <span class="text-[10px] text-slate-400 font-bold tracking-widest uppercase font-mono">ESC</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Analógicos Virtuais para Dispositivos Móveis / Touch -->
+  <div id="touch-controls" class="absolute inset-x-0 bottom-6 px-4 md:px-10 pointer-events-none z-20 flex justify-between items-end hidden">
+    <!-- Analógico Esquerdo: Movimento -->
+    <div id="joystick-left" class="joystick-base pointer-events-auto flex items-center justify-center">
+      <div id="stick-left" class="joystick-stick"></div>
+      <span class="absolute -top-5 text-[10px] font-orbitron font-semibold text-blue-400/80 tracking-wider">MOVER</span>
+    </div>
+
+    <!-- Analógico Direito: Câmera -->
+    <div id="joystick-right" class="joystick-base pointer-events-auto flex items-center justify-center">
+      <div id="stick-right" class="joystick-stick"></div>
+      <span class="absolute -top-5 text-[10px] font-orbitron font-semibold text-blue-400/80 tracking-wider">CÂMERA</span>
+    </div>
+  </div>
+
+  <!-- Menu Inicial -->
+  <div id="main-menu" class="absolute inset-0 z-30 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
+    <div class="glass-panel max-w-lg w-full rounded-2xl p-6 md:p-8 border border-slate-700/60 flex flex-col items-center text-center space-y-5 max-h-[95vh] overflow-y-auto">
+      <div class="space-y-2">
+        <div class="inline-block px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-semibold tracking-widest uppercase mb-1">
+          Jogo 3D em Primeira Pessoa
+        </div>
+        <h1 class="text-4xl md:text-5xl font-black font-orbitron text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-300 to-purple-500 tracking-wider">
+          LABIRINTO
+        </h1>
+        <p class="text-slate-400 text-xs md:text-sm">
+          Explore labirintos gerados aleatoriamente. Encontre a saída em cada nível antes que se perca no infinito!
+        </p>
+      </div>
+
+      <!-- Resumo dos Controles -->
+      <div class="w-full bg-slate-900/80 rounded-xl p-3 md:p-4 border border-slate-800 text-left space-y-2">
+        <div class="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Controles</div>
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <div class="flex items-center gap-2">
+            <span class="px-2 py-1 bg-slate-800 border border-slate-700 rounded font-mono text-blue-400 font-bold">WASD / Touch</span>
+            <span class="text-slate-300">Andar</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="px-2 py-1 bg-slate-800 border border-slate-700 rounded font-mono text-blue-400 font-bold">Mouse / Touch</span>
+            <span class="text-slate-300">Girar Câmera</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Botões de Ação -->
+      <div class="w-full space-y-2.5 pt-1">
+        <button id="btn-play-game" class="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 font-orbitron font-bold text-base md:text-lg rounded-xl btn-glow transition cursor-pointer">
+          INICIAR JOGO
+        </button>
+        <button id="btn-open-levels" class="w-full py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 font-orbitron font-semibold text-xs md:text-sm rounded-xl text-slate-300 transition cursor-pointer">
+          SELECIONAR FASE
+        </button>
+        <button id="btn-open-settings" class="w-full py-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 font-orbitron font-semibold text-xs md:text-sm rounded-xl text-slate-400 hover:text-slate-200 transition cursor-pointer flex items-center justify-center gap-2">
+          ⚙️ CONFIGURAÇÕES
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Configurações -->
+  <div id="settings-menu" class="absolute inset-0 z-40 flex items-center justify-center p-4 bg-slate-950/95 backdrop-blur-lg hidden">
+    <div class="glass-panel max-w-md w-full rounded-2xl p-6 border border-slate-700/60 flex flex-col space-y-5">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h2 class="text-xl font-orbitron font-bold text-blue-400">CONFIGURAÇÕES</h2>
+        <button id="btn-close-settings" class="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition">
+          ✕
+        </button>
+      </div>
+
+      <!-- Opções de Configuração -->
+      <div class="space-y-4 text-xs md:text-sm">
+        <!-- Toggle Analógicos Virtuais -->
+        <div class="flex items-center justify-between p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+          <div>
+            <div class="font-bold text-slate-200">Analógicos na Tela</div>
+            <div class="text-slate-400 text-[11px]">Exibe dois analógicos virtuais para telas sensíveis ao toque (celulares/tablets).</div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="toggle-joysticks" class="sr-only peer">
+            <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+          </label>
+        </div>
+
+        <!-- Estatísticas / Progresso -->
+        <div class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
+          <div class="font-bold text-slate-200">Progresso Salvo</div>
+          <div class="text-slate-400 text-[11px]" id="settings-progress-info">
+            Fases Desbloqueadas: <span class="text-blue-400 font-bold" id="saved-levels-count">1</span>
+          </div>
+          <button id="btn-reset-progress" class="w-full py-2 bg-red-950/40 hover:bg-red-900/50 border border-red-800/50 text-red-400 rounded-lg text-xs font-semibold transition cursor-pointer mt-2">
+            Resetar Todo o Progresso
+          </button>
+        </div>
+      </div>
+
+      <div class="pt-2 flex justify-end">
+        <button id="btn-save-settings" class="w-full py-3 bg-blue-600 hover:bg-blue-500 font-orbitron font-bold text-xs md:text-sm rounded-xl text-white transition cursor-pointer">
+          SALVAR E VOLTAR
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Seleção de Fases -->
+  <div id="level-select-menu" class="absolute inset-0 z-40 flex items-center justify-center p-4 bg-slate-950/95 backdrop-blur-lg hidden">
+    <div class="glass-panel max-w-2xl w-full rounded-2xl p-6 md:p-8 border border-slate-700/60 flex flex-col space-y-6">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-4">
+        <div>
+          <h2 class="text-2xl font-orbitron font-bold text-blue-400">SELEÇÃO DE FASES</h2>
+          <p class="text-xs text-slate-400 mt-1">
+            Cada fase possui um mapa gerado aleatoriamente a cada nova tentativa!
+          </p>
+        </div>
+        <button id="btn-close-levels" class="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition">
+          ✕
+        </button>
+      </div>
+
+      <!-- Grid de Fases -->
+      <div id="levels-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-[50vh] overflow-y-auto p-1">
+        <!-- Inserido dinamicamente via JS -->
+      </div>
+
+      <div class="pt-2 flex justify-end">
+        <button id="btn-back-main" class="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 font-semibold text-sm rounded-xl text-slate-300 transition">
+          Voltar ao Menu
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tela de Pause (Ponteiro Desbloqueado) -->
+  <div id="pause-screen" class="absolute inset-0 z-30 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md hidden">
+    <div class="glass-panel max-w-md w-full rounded-2xl p-6 text-center space-y-5 border border-slate-700">
+      <h2 class="text-3xl font-black font-orbitron text-amber-400">JOGO PAUSADO</h2>
+      <p class="text-sm text-slate-300">
+        Clique na tela para continuar jogando ou escolha uma opção abaixo.
+      </p>
+      <div class="space-y-3 pt-2">
+        <button id="btn-resume" class="w-full py-3 bg-blue-600 hover:bg-blue-500 font-orbitron font-bold text-sm rounded-xl btn-glow transition">
+          CONTINUAR (CLIQUE NO JOGO)
+        </button>
+        <button id="btn-restart-level" class="w-full py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 font-semibold text-sm rounded-xl text-slate-200 transition">
+          REGERAR ESTA FASE
+        </button>
+        <button id="btn-pause-menu" class="w-full py-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 font-semibold text-sm rounded-xl text-slate-400 hover:text-slate-200 transition">
+          MENU PRINCIPAL
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tela de Vitória (Fase Concluída) -->
+  <div id="victory-screen" class="absolute inset-0 z-40 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-xl hidden">
+    <div class="glass-panel max-w-lg w-full rounded-2xl p-6 md:p-8 border border-emerald-500/30 text-center space-y-6">
+      <div class="inline-flex p-4 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 mb-2 animate-bounce">
+        <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+      </div>
+
+      <div class="space-y-2">
+        <h2 class="text-3xl md:text-4xl font-black font-orbitron text-emerald-400 tracking-wide">FASE CONCLUÍDA!</h2>
+        <p class="text-slate-300 text-sm" id="victory-subtitle">Você encontrou a saída com sucesso!</p>
+      </div>
+
+      <!-- Resumo do Desempenho -->
+      <div class="bg-slate-900/90 rounded-xl p-4 border border-slate-800 grid grid-cols-2 gap-4">
+        <div class="text-center border-r border-slate-800">
+          <div class="text-xs text-slate-400 font-bold uppercase">Tempo Total</div>
+          <div class="text-2xl font-orbitron font-bold text-amber-400" id="victory-time">00:45</div>
+        </div>
+        <div class="text-center">
+          <div class="text-xs text-slate-400 font-bold uppercase">Próxima Fase</div>
+          <div class="text-2xl font-orbitron font-bold text-blue-400" id="victory-next-size">7 x 7</div>
+        </div>
+      </div>
+
+      <div class="space-y-3 pt-2">
+        <button id="btn-next-level" class="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 font-orbitron font-bold text-lg rounded-xl btn-glow-emerald transition cursor-pointer">
+          AVANÇAR PARA A PRÓXIMA FASE
+        </button>
+        <button id="btn-replay-level" class="w-full py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 font-semibold text-sm rounded-xl text-slate-200 transition cursor-pointer">
+          JOGAR ESTA FASE NOVAMENTE (NOVO LABIRINTO)
+        </button>
+        <button id="btn-victory-main" class="w-full py-2.5 text-slate-400 hover:text-slate-200 text-xs font-semibold transition">
+          VOLTAR AO MENU PRINCIPAL
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* =========================================================================
+     * PERSISTÊNCIA NO NAVEGADOR (LOCALSTORAGE) E CONFIGURAÇÕES
+     * ========================================================================= */
+    const STORAGE_KEY = 'labirinto_3d_save_data';
+
+    // Configurações e Progresso Padrão
+    let gameSettings = {
+      unlockedLevel: 1,
+      joysticksEnabled: false // Detectará toque automaticamente se for primeiro acesso
+    };
+
+    function loadGameData() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.unlockedLevel) gameSettings.unlockedLevel = parsed.unlockedLevel;
+          if (typeof parsed.joysticksEnabled === 'boolean') {
+            gameSettings.joysticksEnabled = parsed.joysticksEnabled;
+          }
+        } else {
+          // Se for primeira vez, auto-ativa joysticks caso detecte dispositivo touch
+          if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+            gameSettings.joysticksEnabled = true;
+          }
+        }
+      } catch (e) {
+        console.warn('Não foi possível ler do localStorage:', e);
+      }
+      unlockedLevel = gameSettings.unlockedLevel;
+    }
+
+    function saveGameData() {
+      try {
+        gameSettings.unlockedLevel = unlockedLevel;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(gameSettings));
+      } catch (e) {
+        console.warn('Não foi possível salvar no localStorage:', e);
+      }
+    }
+
+    /* =========================================================================
+     * SINTETIZADOR DE ÁUDIO WEB AUDIO API (Sem dependência de arquivos externos)
+     * ========================================================================= */
+    class SoundEffects {
+      constructor() {
+        this.ctx = null;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      // Som de passo leve
+      playFootstep() {
+        if (!this.ctx) return;
+        try {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(120, this.ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(30, this.ctx.currentTime + 0.08);
+
+          gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(0.001, this.ctx.currentTime + 0.08);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          osc.start();
+          osc.stop(this.ctx.currentTime + 0.08);
+        } catch(e) {}
+      }
+
+      // Som de vitória ao alcançar o portal
+      playWinSound() {
+        if (!this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          const notes = [261.63, 329.63, 392.00, 523.25, 659.25]; // C4, E4, G4, C5, E5
+          notes.forEach((freq, index) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            
+            const noteStart = now + index * 0.1;
+            gain.gain.setValueAtTime(0, noteStart);
+            gain.gain.linearRampToValueAtTime(0.15, noteStart + 0.03);
+            gain.gain.exponentialRampToValueAtTime(0.001, noteStart + 0.35);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(noteStart);
+            osc.stop(noteStart + 0.35);
+          });
+        } catch(e) {}
+      }
+
+      // Efeito sonoro de clique de botão
+      playClick() {
+        if (!this.ctx) return;
+        try {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(600, this.ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(200, this.ctx.currentTime + 0.05);
+
+          gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(0.001, this.ctx.currentTime + 0.05);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + 0.05);
+        } catch(e) {}
+      }
+    }
+
+    const soundFX = new SoundEffects();
+
+    /* =========================================================================
+     * GERADOR DE TEXTURAS PROCEDURAIS (Via 2D Canvas)
+     * ========================================================================= */
+    function generateWallTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+
+      // Fundo escuro de pedra/tijolo
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(0, 0, 512, 512);
+
+      // Padrão de blocos de pedra
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 6;
+      const rows = 16;
+      const rowHeight = 512 / rows;
+
+      for (let r = 0; r <= rows; r++) {
+        const y = r * rowHeight;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(512, y);
+        ctx.stroke();
+
+        const cols = 8;
+        const colWidth = 512 / cols;
+        const offset = (r % 2) * (colWidth / 2);
+
+        for (let c = 0; c <= cols + 1; c++) {
+          const x = c * colWidth - offset;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x, y + rowHeight);
+          ctx.stroke();
+        }
+      }
+
+      // Adicionar ruído para textura orgânica de rocha
+      const imgData = ctx.getImageData(0, 0, 512, 512);
+      const data = imgData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        const noise = (Math.random() - 0.5) * 25;
+        data[i] = Math.min(255, Math.max(0, data[i] + noise));
+        data[i+1] = Math.min(255, Math.max(0, data[i+1] + noise));
+        data[i+2] = Math.min(255, Math.max(0, data[i+2] + noise));
+      }
+      ctx.putImageData(imgData, 0, 0);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      return texture;
+    }
+
+    function generateFloorTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+
+      // Piso de azulejos ou concreto escuro
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, 256, 256);
+
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 4;
+      const size = 64;
+
+      for (let x = 0; x <= 256; x += size) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, 256);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= 256; y += size) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(256, y);
+        ctx.stroke();
+      }
+
+      // Detalhes de poeira
+      const imgData = ctx.getImageData(0, 0, 256, 256);
+      const data = imgData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        const noise = (Math.random() - 0.5) * 15;
+        data[i] = Math.min(255, Math.max(0, data[i] + noise));
+        data[i+1] = Math.min(255, Math.max(0, data[i+1] + noise));
+        data[i+2] = Math.min(255, Math.max(0, data[i+2] + noise));
+      }
+      ctx.putImageData(imgData, 0, 0);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      return texture;
+    }
+
+    /* =========================================================================
+     * GERADOR PROCEDURAL DE LABIRINTO (Depth-First Search / Recursive Backtracker)
+     * ========================================================================= */
+    class MazeGenerator {
+      constructor(cols, rows) {
+        // Garante que as dimensões sejam ímpares para criar corredores e paredes intercaladas
+        this.cols = cols % 2 === 0 ? cols + 1 : cols;
+        this.rows = rows % 2 === 0 ? rows + 1 : rows;
+        this.grid = [];
+        
+        // 1 representa Parede, 0 representa Caminho Livre
+        for (let r = 0; r < this.rows; r++) {
+          const row = [];
+          for (let c = 0; c < this.cols; c++) {
+            row.push(1);
+          }
+          this.grid.push(row);
+        }
+      }
+
+      generate() {
+        const startC = 1;
+        const startR = 1;
+        this.grid[startR][startC] = 0;
+
+        const stack = [[startC, startR]];
+
+        while (stack.length > 0) {
+          const [currC, currR] = stack[stack.length - 1];
+          const neighbors = [];
+
+          // Direções possíveis (salto de 2 células)
+          const dirs = [
+            [0, -2], // Cima
+            [0, 2],  // Baixo
+            [-2, 0], // Esquerda
+            [2, 0]   // Direita
+          ];
+
+          for (const [dc, dr] of dirs) {
+            const newC = currC + dc;
+            const newR = currR + dr;
+
+            if (newC > 0 && newC < this.cols - 1 && newR > 0 && newR < this.rows - 1) {
+              if (this.grid[newR][newC] === 1) {
+                neighbors.push([newC, newR, dc, dr]);
+              }
+            }
+          }
+
+          if (neighbors.length > 0) {
+            // Escolhe um vizinho aleatório
+            const [nextC, nextR, dc, dr] = neighbors[Math.floor(Math.random() * neighbors.length)];
+            // Remove a parede intermediária
+            this.grid[currR + dr / 2][currC + dc / 2] = 0;
+            // Marca o destino como caminho
+            this.grid[nextR][nextC] = 0;
+            stack.push([nextC, nextR]);
+          } else {
+            stack.pop();
+          }
+        }
+
+        // Definir Ponto de Saída no canto oposto (ou na célula livre mais distante)
+        let exitC = this.cols - 2;
+        let exitR = this.rows - 2;
+        
+        // Garantir que a saída esteja em um caminho
+        if (this.grid[exitR][exitC] === 1) {
+          this.grid[exitR][exitC] = 0;
+        }
+
+        return {
+          grid: this.grid,
+          start: { x: startC, z: startR },
+          exit: { x: exitC, z: exitR },
+          cols: this.cols,
+          rows: this.rows
+        };
+      }
+    }
+
+    /* =========================================================================
+     * GERENCIADOR GLOBAL DO JOGO E CONTROLES
+     * ========================================================================= */
+    const CELL_SIZE = 4;       // Tamanho de cada célula no mundo 3D
+    const WALL_HEIGHT = 4.5;   // Altura das paredes do labirinto
+    const PLAYER_RADIUS = 0.6; // Raio de colisão do jogador
+
+    let currentLevelIndex = 1;
+    let unlockedLevel = 1;
+    mazeData = null;
+
+    let scene, camera, renderer;
+    let flashlight, ambientLight;
+    let portalMesh, portalParticles;
+
+    // Estado dos controles via Teclado e Touch
+    const keys = { KeyW: false, KeyS: false, KeyA: false, KeyD: false };
+    let isPointerLocked = false;
+    let euler = new THREE.Euler(0, 0, 0, 'YXZ');
+
+    // Analógicos Virtuais (Touch)
+    let leftTouchInput = { x: 0, y: 0 };
+    let rightTouchInput = { x: 0, y: 0 };
+    let touchControlActive = false;
+
+    // Estado da física/movimento
+    const playerPos = new THREE.Vector3();
+    const velocity = new THREE.Vector3();
+    let moveSpeed = 8.0;
+    let headBobTimer = 0;
+    let isPlaying = false;
+    let returnToGameOnSettingsClose = false;
+
+    // Cronômetro de jogo
+    let timerInterval = null;
+    let secondsElapsed = 0;
+
+    // Texturas reaproveitáveis
+    let wallTexture, floorTexture;
+
+    function init3D() {
+      const container = document.getElementById('game-container');
+
+      // Cena 3D
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x020617);
+      scene.fog = new THREE.FogExp2(0x020617, 0.08);
+
+      // Câmera em Primeira Pessoa
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+      scene.add(camera);
+
+      // Renderizador
+      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      container.appendChild(renderer.domElement);
+
+      // Luz Ambiente suave
+      ambientLight = new THREE.AmbientLight(0x1e293b, 0.6);
+      scene.add(ambientLight);
+
+      // Lanterna acoplada à câmera do jogador (SpotLight)
+      flashlight = new THREE.SpotLight(0xfffbeb, 2.5, 25, Math.PI / 5, 0.4, 1);
+      flashlight.position.set(0, 0, 0);
+      flashlight.castShadow = true;
+      flashlight.shadow.mapSize.width = 1024;
+      flashlight.shadow.mapSize.height = 1024;
+      flashlight.shadow.camera.near = 0.5;
+      flashlight.shadow.camera.far = 25;
+
+      const flashlightTarget = new THREE.Object3D();
+      flashlightTarget.position.set(0, 0, -1);
+      camera.add(flashlight);
+      camera.add(flashlightTarget);
+      flashlight.target = flashlightTarget;
+
+      // Gerar texturas reutilizáveis
+      wallTexture = generateWallTexture();
+      floorTexture = generateFloorTexture();
+
+      // Eventos de Redimensionamento e Controles
+      window.addEventListener('resize', onWindowResize);
+      setupInputListeners();
+      setupTouchJoysticks();
+    }
+
+    function buildMazeWorld(level) {
+      // Limpar objetos anteriores do labirinto
+      const objectsToRemove = [];
+      scene.children.forEach(child => {
+        if (child !== camera && child !== ambientLight) {
+          objectsToRemove.push(child);
+        }
+      });
+      objectsToRemove.forEach(obj => scene.remove(obj));
+
+      // Calcular dimensões do labirinto para a fase
+      // Fase 1: 5x5, Fase 2: 7x7, Fase 3: 9x9...
+      const gridSize = 5 + (level - 1) * 2;
+      const generator = new MazeGenerator(gridSize, gridSize);
+      mazeData = generator.generate();
+
+      const { grid, cols, rows, start, exit } = mazeData;
+
+      // Materiais com Textura
+      const wallMat = new THREE.MeshStandardMaterial({
+        map: wallTexture,
+        roughness: 0.8,
+        metalness: 0.1
+      });
+      wallTexture.repeat.set(1, 1);
+
+      const floorMat = new THREE.MeshStandardMaterial({
+        map: floorTexture,
+        roughness: 0.6,
+        metalness: 0.2
+      });
+      floorTexture.repeat.set(cols * 0.5, rows * 0.5);
+
+      const ceilingMat = new THREE.MeshStandardMaterial({
+        color: 0x0f172a,
+        roughness: 0.9
+      });
+
+      // Geometria única reaproveitável para otimização de performance
+      const wallGeo = new THREE.BoxGeometry(CELL_SIZE, WALL_HEIGHT, CELL_SIZE);
+      const mazeGroup = new THREE.Group();
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const posX = (c - cols / 2 + 0.5) * CELL_SIZE;
+          const posZ = (r - rows / 2 + 0.5) * CELL_SIZE;
+
+          if (grid[r][c] === 1) {
+            // Criar Bloco de Parede
+            const wallMesh = new THREE.Mesh(wallGeo, wallMat);
+            wallMesh.position.set(posX, WALL_HEIGHT / 2, posZ);
+            wallMesh.castShadow = true;
+            wallMesh.receiveShadow = true;
+            mazeGroup.add(wallMesh);
+          }
+        }
+      }
+
+      // Piso do Labirinto
+      const floorGeo = new THREE.PlaneGeometry(cols * CELL_SIZE, rows * CELL_SIZE);
+      const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+      floorMesh.rotation.x = -Math.PI / 2;
+      floorMesh.position.set(0, 0, 0);
+      floorMesh.receiveShadow = true;
+      mazeGroup.add(floorMesh);
+
+      // Teto do Labirinto
+      const ceilingMesh = new THREE.Mesh(floorGeo, ceilingMat);
+      ceilingMesh.rotation.x = Math.PI / 2;
+      ceilingMesh.position.set(0, WALL_HEIGHT, 0);
+      mazeGroup.add(ceilingMesh);
+
+      scene.add(mazeGroup);
+
+      // Posicionar o jogador na célula de início
+      const startX = (start.x - cols / 2 + 0.5) * CELL_SIZE;
+      const startZ = (start.z - rows / 2 + 0.5) * CELL_SIZE;
+      playerPos.set(startX, 1.6, startZ);
+      camera.position.copy(playerPos);
+      euler.set(0, 0, 0);
+      camera.quaternion.setFromEuler(euler);
+
+      // Criar Portal de Saída no destino
+      createExitPortal(exit, cols, rows);
+
+      // Atualizar interface de tamanho da fase
+      document.getElementById('hud-level').innerText = `Fase ${level}`;
+      document.getElementById('hud-size').innerText = `Tamanho: ${cols} x ${rows}`;
+    }
+
+    function createExitPortal(exit, cols, rows) {
+      const exitX = (exit.x - cols / 2 + 0.5) * CELL_SIZE;
+      const exitZ = (exit.z - rows / 2 + 0.5) * CELL_SIZE;
+
+      const portalGroup = new THREE.Group();
+      portalGroup.position.set(exitX, 0, exitZ);
+
+      // Anel brilhante do Portal
+      const torusGeo = new THREE.TorusGeometry(1.2, 0.15, 16, 32);
+      const torusMat = new THREE.MeshBasicMaterial({ color: 0x10b981, wireframe: true });
+      portalMesh = new THREE.Mesh(torusGeo, torusMat);
+      portalMesh.position.y = 1.8;
+      portalGroup.add(portalMesh);
+
+      // Feixe de luz central
+      const beamGeo = new THREE.CylinderGeometry(0.8, 0.8, WALL_HEIGHT, 16, 1, true);
+      const beamMat = new THREE.MeshBasicMaterial({
+        color: 0x34d399,
+        transparent: true,
+        opacity: 0.35,
+        side: THREE.DoubleSide
+      });
+      const beamMesh = new THREE.Mesh(beamGeo, beamMat);
+      beamMesh.position.y = WALL_HEIGHT / 2;
+      portalGroup.add(beamMesh);
+
+      // Luz pontual emitida pela saída
+      const portalLight = new THREE.PointLight(0x10b981, 3, 12);
+      portalLight.position.y = 2;
+      portalGroup.add(portalLight);
+
+      // Partículas flutuantes da saída
+      const particleGeo = new THREE.BufferGeometry();
+      const count = 40;
+      const posArray = new Float32Array(count * 3);
+      for (let i = 0; i < count * 3; i += 3) {
+        posArray[i] = (Math.random() - 0.5) * 2;
+        posArray[i+1] = Math.random() * WALL_HEIGHT;
+        posArray[i+2] = (Math.random() - 0.5) * 2;
+      }
+      particleGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+      const particleMat = new THREE.PointsMaterial({
+        size: 0.08,
+        color: 0x6ee7b7,
+        transparent: true,
+        opacity: 0.8
+      });
+      portalParticles = new THREE.Points(particleGeo, particleMat);
+      portalGroup.add(portalParticles);
+
+      scene.add(portalGroup);
+    }
+
+    function setupInputListeners() {
+      // Teclado (WASD)
+      window.addEventListener('keydown', (e) => {
+        if (e.code in keys) keys[e.code] = true;
+      });
+
+      window.addEventListener('keyup', (e) => {
+        if (e.code in keys) keys[e.code] = false;
+      });
+
+      // Pointer Lock (Giro de câmera com o Mouse para Desktop)
+      const container = document.getElementById('game-container');
+      
+      container.addEventListener('click', () => {
+        // Se analógicos não estiverem visíveis ou for PC, habilita trava do mouse
+        if (isPlaying && !isPointerLocked && !gameSettings.joysticksEnabled) {
+          container.requestPointerLock();
+          soundFX.init();
+        }
+      });
+
+      document.addEventListener('pointerlockchange', () => {
+        isPointerLocked = document.pointerLockElement === container;
+        const pauseScreen = document.getElementById('pause-screen');
+        const crosshair = document.getElementById('crosshair');
+
+        if (isPointerLocked) {
+          pauseScreen.classList.add('hidden');
+          crosshair.classList.remove('hidden');
+        } else if (isPlaying && !gameSettings.joysticksEnabled) {
+          // Exibir menu de Pause apenas se não estiver em modo touch
+          pauseScreen.classList.remove('hidden');
+          crosshair.classList.add('hidden');
+        }
+      });
+
+      // Movimento da câmera com o Mouse
+      document.addEventListener('mousemove', (e) => {
+        if (!isPointerLocked || !isPlaying) return;
+
+        const movementX = e.movementX || 0;
+        const movementY = e.movementY || 0;
+
+        euler.y -= movementX * 0.0022;
+        euler.x -= movementY * 0.0022;
+
+        euler.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, euler.x));
+        camera.quaternion.setFromEuler(euler);
+      });
+    }
+
+    function setupTouchJoysticks() {
+      const leftBase = document.getElementById('joystick-left');
+      const leftStick = document.getElementById('stick-left');
+      const rightBase = document.getElementById('joystick-right');
+      const rightStick = document.getElementById('stick-right');
+
+      let leftTouchId = null;
+      let rightTouchId = null;
+
+      let leftCenter = { x: 0, y: 0 };
+      let rightCenter = { x: 0, y: 0 };
+
+      const maxRadius = 40; // Distância máxima do stick em pixels
+
+      // Função utilitária para registrar toques nos analógicos
+      function handleTouchStart(e) {
+        if (!isPlaying) return;
+        soundFX.init();
+
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          const touch = e.changedTouches[i];
+          const target = touch.target;
+
+          if ((target === leftBase || leftBase.contains(target)) && leftTouchId === null) {
+            leftTouchId = touch.identifier;
+            const rect = leftBase.getBoundingClientRect();
+            leftCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+            updateStick(touch, leftCenter, leftStick, leftTouchInput);
+          } else if ((target === rightBase || rightBase.contains(target)) && rightTouchId === null) {
+            rightTouchId = touch.identifier;
+            const rect = rightBase.getBoundingClientRect();
+            rightCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+            updateStick(touch, rightCenter, rightStick, rightTouchInput);
+          }
+        }
+      }
+
+      function handleTouchMove(e) {
+        if (!isPlaying) return;
+
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          const touch = e.changedTouches[i];
+
+          if (touch.identifier === leftTouchId) {
+            updateStick(touch, leftCenter, leftStick, leftTouchInput);
+          } else if (touch.identifier === rightTouchId) {
+            updateStick(touch, rightCenter, rightStick, rightTouchInput);
+          }
+        }
+      }
+
+      function handleTouchEnd(e) {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          const touch = e.changedTouches[i];
+
+          if (touch.identifier === leftTouchId) {
+            leftTouchId = null;
+            leftTouchInput = { x: 0, y: 0 };
+            leftStick.style.transform = `translate(-50%, -50%)`;
+          } else if (touch.identifier === rightTouchId) {
+            rightTouchId = null;
+            rightTouchInput = { x: 0, y: 0 };
+            rightStick.style.transform = `translate(-50%, -50%)`;
+          }
+        }
+      }
+
+      function updateStick(touch, center, stickEl, inputObj) {
+        const dx = touch.clientX - center.x;
+        const dy = touch.clientY - center.y;
+        const dist = Math.hypot(dx, dy);
+
+        const angle = Math.atan2(dy, dx);
+        const clampedDist = Math.min(dist, maxRadius);
+
+        const moveX = Math.cos(angle) * clampedDist;
+        const moveY = Math.sin(angle) * clampedDist;
+
+        stickEl.style.transform = `translate(calc(-50% + ${moveX}px), calc(-50% + ${moveY}px))`;
+
+        // Normaliza valores de -1.0 até 1.0
+        inputObj.x = moveX / maxRadius;
+        inputObj.y = moveY / maxRadius;
+      }
+
+      window.addEventListener('touchstart', handleTouchStart, { passive: false });
+      window.addEventListener('touchmove', handleTouchMove, { passive: false });
+      window.addEventListener('touchend', handleTouchEnd);
+      window.addEventListener('touchcancel', handleTouchEnd);
+    }
+
+    function updatePlayerMovement(delta) {
+      if (!isPlaying || !mazeData) return;
+
+      // Processar rotação da Câmera via Analógico Direito
+      if (gameSettings.joysticksEnabled && (rightTouchInput.x !== 0 || rightTouchInput.y !== 0)) {
+        const rotSpeed = 2.2;
+        euler.y -= rightTouchInput.x * rotSpeed * delta;
+        euler.x -= rightTouchInput.y * rotSpeed * delta;
+        euler.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, euler.x));
+        camera.quaternion.setFromEuler(euler);
+      }
+
+      // Calcular direção baseada no teclado + analógico esquerdo
+      const moveVector = new THREE.Vector3();
+      const yaw = euler.y;
+
+      const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+      const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+
+      // Entradas via Teclado
+      if (keys.KeyW) moveVector.add(forward);
+      if (keys.KeyS) moveVector.sub(forward);
+      if (keys.KeyD) moveVector.add(right);
+      if (keys.KeyA) moveVector.sub(right);
+
+      // Entradas via Analógico Esquerdo
+      if (gameSettings.joysticksEnabled) {
+        if (leftTouchInput.y !== 0) {
+          moveVector.addScaledVector(forward, -leftTouchInput.y);
+        }
+        if (leftTouchInput.x !== 0) {
+          moveVector.addScaledVector(right, leftTouchInput.x);
+        }
+      }
+
+      if (moveVector.lengthSq() > 0) {
+        if (moveVector.lengthSq() > 1) moveVector.normalize();
+        
+        // Efeito sonoro de passos com temporizador
+        headBobTimer += delta * 12;
+        if (Math.sin(headBobTimer) < -0.9) {
+          soundFX.playFootstep();
+        }
+      } else {
+        headBobTimer = 0;
+      }
+
+      // Efeito sutil de balanço da cabeça (Head Bobbing)
+      const bobOffset = Math.sin(headBobTimer) * 0.06;
+      camera.position.y = playerPos.y + bobOffset;
+
+      // Movimentação com detecção de colisão (Parede do labirinto)
+      const targetPos = playerPos.clone().addScaledVector(moveVector, moveSpeed * delta);
+      
+      if (!checkCollision(targetPos.x, playerPos.z)) {
+        playerPos.x = targetPos.x;
+      }
+      if (!checkCollision(playerPos.x, targetPos.z)) {
+        playerPos.z = targetPos.z;
+      }
+
+      camera.position.x = playerPos.x;
+      camera.position.z = playerPos.z;
+
+      // Verificar se o jogador alcançou a saída
+      checkExitReached();
+    }
+
+    // Verifica se uma posição no espaço colide com uma parede (grid = 1)
+    function checkCollision(x, z) {
+      const { grid, cols, rows } = mazeData;
+
+      // Converter coordenada do mundo 3D para índices da matriz
+      const gridX = Math.floor((x / CELL_SIZE) + cols / 2);
+      const gridZ = Math.floor((z / CELL_SIZE) + rows / 2);
+
+      // Checar os vizinhos próximos dentro do raio do jogador
+      const checkRadius = PLAYER_RADIUS;
+      const minGX = Math.floor(((x - checkRadius) / CELL_SIZE) + cols / 2);
+      const maxGX = Math.floor(((x + checkRadius) / CELL_SIZE) + cols / 2);
+      const minGZ = Math.floor(((z - checkRadius) / CELL_SIZE) + rows / 2);
+      const maxGZ = Math.floor(((z + checkRadius) / CELL_SIZE) + rows / 2);
+
+      for (let r = minGZ; r <= maxGZ; r++) {
+        for (let c = minGX; c <= maxGX; c++) {
+          if (r < 0 || r >= rows || c < 0 || c >= cols) return true;
+          if (grid[r][c] === 1) return true; // Colisão com parede!
+        }
+      }
+
+      return false;
+    }
+
+    function checkExitReached() {
+      const { exit, cols, rows } = mazeData;
+      const exitX = (exit.x - cols / 2 + 0.5) * CELL_SIZE;
+      const exitZ = (exit.z - rows / 2 + 0.5) * CELL_SIZE;
+
+      const dist = Math.hypot(playerPos.x - exitX, playerPos.z - exitZ);
+      
+      // Distância de ativação do portal de saída
+      if (dist < 1.8) {
+        onLevelComplete();
+      }
+    }
+
+    let clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const delta = Math.min(clock.getDelta(), 0.1);
+
+      if (isPlaying) {
+        updatePlayerMovement(delta);
+        
+        // Animação do Portal de Saída
+        if (portalMesh) {
+          portalMesh.rotation.z += delta * 1.5;
+          portalMesh.rotation.y += delta * 0.8;
+        }
+        if (portalParticles) {
+          portalParticles.rotation.y += delta * 0.5;
+        }
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    function startTimer() {
+      stopTimer();
+      secondsElapsed = 0;
+      updateTimerHUD();
+      timerInterval = setInterval(() => {
+        secondsElapsed++;
+        updateTimerHUD();
+      }, 1000);
+    }
+
+    function stopTimer() {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+    }
+
+    function updateTimerHUD() {
+      const mins = Math.floor(secondsElapsed / 60).toString().padStart(2, '0');
+      const secs = (secondsElapsed % 60).toString().padStart(2, '0');
+      document.getElementById('hud-timer').innerText = `${mins}:${secs}`;
+    }
+
+    function startLevel(levelNum) {
+      soundFX.playClick();
+      currentLevelIndex = levelNum;
+      
+      // Esconder todos os menus
+      document.getElementById('main-menu').classList.add('hidden');
+      document.getElementById('level-select-menu').classList.add('hidden');
+      document.getElementById('settings-menu').classList.add('hidden');
+      document.getElementById('victory-screen').classList.add('hidden');
+      document.getElementById('pause-screen').classList.add('hidden');
+      document.getElementById('hud').classList.remove('hidden');
+
+      // Exibir ou ocultar analógicos de acordo com a configuração
+      const touchControlsEl = document.getElementById('touch-controls');
+      const crosshairEl = document.getElementById('crosshair');
+
+      if (gameSettings.joysticksEnabled) {
+        touchControlsEl.classList.remove('hidden');
+        crosshairEl.classList.remove('hidden');
+      } else {
+        touchControlsEl.classList.add('hidden');
+      }
+
+      // Construir o labirinto novo da fase
+      buildMazeWorld(currentLevelIndex);
+
+      isPlaying = true;
+      startTimer();
+
+      // Solicitar Pointer Lock para iniciar no PC se touch não estiver ativo
+      if (!gameSettings.joysticksEnabled) {
+        document.getElementById('game-container').requestPointerLock();
+      }
+    }
+
+    function onLevelComplete() {
+      isPlaying = false;
+      stopTimer();
+      if (document.pointerLockElement) {
+        document.exitPointerLock();
+      }
+
+      soundFX.playWinSound();
+
+      // Atualizar progresso e fases liberadas
+      if (currentLevelIndex >= unlockedLevel) {
+        unlockedLevel = currentLevelIndex + 1;
+        saveGameData(); // Salvar no localStorage
+      }
+
+      const mins = Math.floor(secondsElapsed / 60).toString().padStart(2, '0');
+      const secs = (secondsElapsed % 60).toString().padStart(2, '0');
+      const nextSize = 5 + (currentLevelIndex) * 2;
+
+      document.getElementById('victory-time').innerText = `${mins}:${secs}`;
+      document.getElementById('victory-next-size').innerText = `${nextSize} x ${nextSize}`;
+      document.getElementById('victory-subtitle').innerText = `Você dominou o labirinto da Fase ${currentLevelIndex}!`;
+      document.getElementById('victory-screen').classList.remove('hidden');
+      document.getElementById('hud').classList.add('hidden');
+      document.getElementById('touch-controls').classList.add('hidden');
+    }
+
+    function onLevelComplete() {
+      isPlaying = false;
+      stopTimer();
+      document.exitPointerLock();
+
+      soundFX.playWinSound();
+
+      // Atualizar progresso e fases liberadas
+      if (currentLevelIndex >= unlockedLevel) {
+        unlockedLevel = currentLevelIndex + 1;
+      }
+
+      const mins = Math.floor(secondsElapsed / 60).toString().padStart(2, '0');
+      const secs = (secondsElapsed % 60).toString().padStart(2, '0');
+      const nextSize = 5 + (currentLevelIndex) * 2;
+
+      document.getElementById('victory-time').innerText = `${mins}:${secs}`;
+      document.getElementById('victory-next-size').innerText = `${nextSize} x ${nextSize}`;
+      document.getElementById('victory-subtitle').innerText = `Você dominou o labirinto da Fase ${currentLevelIndex}!`;
+      document.getElementById('victory-screen').classList.remove('hidden');
+      document.getElementById('hud').classList.add('hidden');
+    }
+
+    function renderLevelSelectGrid() {
+      const gridContainer = document.getElementById('levels-grid');
+      gridContainer.innerHTML = '';
+
+      for (let i = 1; i <= Math.max(unlockedLevel, 10); i++) {
+        const isUnlocked = i <= unlockedLevel;
+        const btn = document.createElement('button');
+        const size = 5 + (i - 1) * 2;
+
+        btn.className = `p-4 rounded-xl border flex flex-col items-center justify-center transition font-orbitron ${
+          isUnlocked
+            ? 'bg-slate-900 border-blue-500/40 hover:border-blue-400 hover:bg-slate-800 text-white cursor-pointer'
+            : 'bg-slate-950/60 border-slate-800 text-slate-600 cursor-not-allowed opacity-60'
+        }`;
+
+        btn.innerHTML = `
+          <div class="text-xs text-slate-400 font-sans">FASE</div>
+          <div class="text-2xl font-black ${isUnlocked ? 'text-blue-400' : 'text-slate-600'}">${i}</div>
+          <div class="text-[10px] text-slate-500 mt-1 font-sans">${size} x ${size}</div>
+        `;
+
+        if (isUnlocked) {
+          btn.addEventListener('click', () => {
+            startLevel(i);
+          });
+        }
+
+        gridContainer.appendChild(btn);
+      }
+    }
+
+    window.onload = function() {
+      loadGameData(); // Carregar progresso do localStorage
+      init3D();
+      animate();
+
+      // Atualizar estado do checkbox nas configurações
+      const joystickToggle = document.getElementById('toggle-joysticks');
+      joystickToggle.checked = gameSettings.joysticksEnabled;
+
+      // Botão Iniciar Jogo (Menu Principal)
+      document.getElementById('btn-play-game').addEventListener('click', () => {
+        startLevel(unlockedLevel);
+      });
+
+      // Botão Abrir Seleção de Fases
+      document.getElementById('btn-open-levels').addEventListener('click', () => {
+        soundFX.playClick();
+        renderLevelSelectGrid();
+        document.getElementById('main-menu').classList.add('hidden');
+        document.getElementById('level-select-menu').classList.remove('hidden');
+      });
+
+      // Menu Configurações
+      document.getElementById('btn-open-settings').addEventListener('click', () => {
+        soundFX.playClick();
+        returnToGameOnSettingsClose = false;
+        document.getElementById('saved-levels-count').innerText = unlockedLevel;
+        document.getElementById('toggle-joysticks').checked = gameSettings.joysticksEnabled;
+        document.getElementById('main-menu').classList.add('hidden');
+        document.getElementById('settings-menu').classList.remove('hidden');
+      });
+
+      // Botão de Engrenagem do HUD durante a partida
+      document.getElementById('btn-hud-settings').addEventListener('click', () => {
+        soundFX.playClick();
+        if (document.pointerLockElement) {
+          document.exitPointerLock();
+        }
+        isPlaying = false;
+        returnToGameOnSettingsClose = true;
+        document.getElementById('saved-levels-count').innerText = unlockedLevel;
+        document.getElementById('toggle-joysticks').checked = gameSettings.joysticksEnabled;
+        document.getElementById('hud').classList.add('hidden');
+        document.getElementById('touch-controls').classList.add('hidden');
+        document.getElementById('settings-menu').classList.remove('hidden');
+      });
+
+      function closeSettingsMenu() {
+        soundFX.playClick();
+        document.getElementById('settings-menu').classList.add('hidden');
+        if (returnToGameOnSettingsClose) {
+          returnToGameOnSettingsClose = false;
+          document.getElementById('hud').classList.remove('hidden');
+          if (gameSettings.joysticksEnabled) {
+            document.getElementById('touch-controls').classList.remove('hidden');
+          }
+          isPlaying = true;
+          if (!gameSettings.joysticksEnabled) {
+            document.getElementById('game-container').requestPointerLock();
+          }
+        } else {
+          document.getElementById('main-menu').classList.remove('hidden');
+        }
+      }
+
+      document.getElementById('btn-close-settings').addEventListener('click', closeSettingsMenu);
+
+      document.getElementById('btn-save-settings').addEventListener('click', () => {
+        gameSettings.joysticksEnabled = document.getElementById('toggle-joysticks').checked;
+        saveGameData();
+        closeSettingsMenu();
+      });
+
+      document.getElementById('btn-reset-progress').addEventListener('click', () => {
+        soundFX.playClick();
+        unlockedLevel = 1;
+        saveGameData();
+        document.getElementById('saved-levels-count').innerText = 1;
+      });
+
+      // Botões Fechar Seleção de Fases
+      document.getElementById('btn-close-levels').addEventListener('click', () => {
+        soundFX.playClick();
+        document.getElementById('level-select-menu').classList.add('hidden');
+        document.getElementById('main-menu').classList.remove('hidden');
+      });
+      document.getElementById('btn-back-main').addEventListener('click', () => {
+        soundFX.playClick();
+        document.getElementById('level-select-menu').classList.add('hidden');
+        document.getElementById('main-menu').classList.remove('hidden');
+      });
+
+      // Botões da Tela de Vitória
+      document.getElementById('btn-next-level').addEventListener('click', () => {
+        startLevel(currentLevelIndex + 1);
+      });
+      document.getElementById('btn-replay-level').addEventListener('click', () => {
+        startLevel(currentLevelIndex);
+      });
+      document.getElementById('btn-victory-main').addEventListener('click', () => {
+        soundFX.playClick();
+        document.getElementById('victory-screen').classList.add('hidden');
+        document.getElementById('main-menu').classList.remove('hidden');
+      });
+
+      // Botões da Tela de Pause
+      document.getElementById('btn-resume').addEventListener('click', () => {
+        soundFX.playClick();
+        if (!gameSettings.joysticksEnabled) {
+          document.getElementById('game-container').requestPointerLock();
+        } else {
+          document.getElementById('pause-screen').classList.add('hidden');
+          document.getElementById('crosshair').classList.remove('hidden');
+        }
+      });
+      document.getElementById('btn-restart-level').addEventListener('click', () => {
+        startLevel(currentLevelIndex);
+      });
+      document.getElementById('btn-pause-menu').addEventListener('click', () => {
+        soundFX.playClick();
+        isPlaying = false;
+        stopTimer();
+        document.getElementById('pause-screen').classList.add('hidden');
+        document.getElementById('hud').classList.add('hidden');
+        document.getElementById('touch-controls').classList.add('hidden');
+        document.getElementById('main-menu').classList.remove('hidden');
+      });
+    };
+
+    function onWindowResize() {
+      if (camera && renderer) {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+    }
+  </script>
+</body>
+</html>
