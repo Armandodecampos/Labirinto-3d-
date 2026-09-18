@@ -220,7 +220,7 @@
         <div class="flex items-center justify-between p-3 rounded-xl bg-slate-900/80 border border-slate-800">
           <div>
             <div class="font-bold text-slate-200">Analógico Esquerda/Direita Apenas</div>
-            <div class="text-slate-400 text-[11px]">Restringe o movimento dos analógicos apenas para a esquerda e direita.</div>
+            <div class="text-slate-400 text-[11px]">Restringe a câmera para giração apenas horizontal (esquerda/direita) e centraliza a visão.</div>
           </div>
           <label class="relative inline-flex items-center cursor-pointer">
             <input type="checkbox" id="toggle-horizontal-joystick" class="sr-only peer">
@@ -951,12 +951,12 @@
             leftTouchId = touch.identifier;
             const rect = leftBase.getBoundingClientRect();
             leftCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-            updateStick(touch, leftCenter, leftStick, leftTouchInput);
+            updateStick(touch, leftCenter, leftStick, leftTouchInput, false);
           } else if ((target === rightBase || rightBase.contains(target)) && rightTouchId === null) {
             rightTouchId = touch.identifier;
             const rect = rightBase.getBoundingClientRect();
             rightCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-            updateStick(touch, rightCenter, rightStick, rightTouchInput);
+            updateStick(touch, rightCenter, rightStick, rightTouchInput, true);
           }
         }
       }
@@ -968,9 +968,9 @@
           const touch = e.changedTouches[i];
 
           if (touch.identifier === leftTouchId) {
-            updateStick(touch, leftCenter, leftStick, leftTouchInput);
+            updateStick(touch, leftCenter, leftStick, leftTouchInput, false);
           } else if (touch.identifier === rightTouchId) {
-            updateStick(touch, rightCenter, rightStick, rightTouchInput);
+            updateStick(touch, rightCenter, rightStick, rightTouchInput, true);
           }
         }
       }
@@ -991,10 +991,10 @@
         }
       }
 
-      function updateStick(touch, center, stickEl, inputObj) {
+      function updateStick(touch, center, stickEl, inputObj, isCamera = false) {
         const dx = touch.clientX - center.x;
         let dy = touch.clientY - center.y;
-        if (gameSettings.horizontalJoystickOnly) {
+        if (isCamera && gameSettings.horizontalJoystickOnly) {
           dy = 0;
         }
         const dist = Math.hypot(dx, dy);
@@ -1022,11 +1022,20 @@
       if (!isPlaying || !mazeData) return;
 
       // Processar rotação da Câmera via Analógico Direito
+      if (gameSettings.horizontalJoystickOnly) {
+        euler.x = 0;
+      }
       if (gameSettings.joysticksEnabled && (rightTouchInput.x !== 0 || rightTouchInput.y !== 0)) {
         const rotSpeed = 2.2;
         euler.y -= rightTouchInput.x * rotSpeed * delta;
-        euler.x -= rightTouchInput.y * rotSpeed * delta;
-        euler.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, euler.x));
+        if (!gameSettings.horizontalJoystickOnly) {
+          euler.x -= rightTouchInput.y * rotSpeed * delta;
+          euler.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, euler.x));
+        } else {
+          euler.x = 0;
+        }
+        camera.quaternion.setFromEuler(euler);
+      } else if (gameSettings.horizontalJoystickOnly && camera) {
         camera.quaternion.setFromEuler(euler);
       }
 
@@ -1232,29 +1241,6 @@
       document.getElementById('touch-controls').classList.add('hidden');
     }
 
-    function onLevelComplete() {
-      isPlaying = false;
-      stopTimer();
-      document.exitPointerLock();
-
-      soundFX.playWinSound();
-
-      // Atualizar progresso e fases liberadas
-      if (currentLevelIndex >= unlockedLevel) {
-        unlockedLevel = currentLevelIndex + 1;
-      }
-
-      const mins = Math.floor(secondsElapsed / 60).toString().padStart(2, '0');
-      const secs = (secondsElapsed % 60).toString().padStart(2, '0');
-      const nextSize = 5 + (currentLevelIndex) * 2;
-
-      document.getElementById('victory-time').innerText = `${mins}:${secs}`;
-      document.getElementById('victory-next-size').innerText = `${nextSize} x ${nextSize}`;
-      document.getElementById('victory-subtitle').innerText = `Você dominou o labirinto da Fase ${currentLevelIndex}!`;
-      document.getElementById('victory-screen').classList.remove('hidden');
-      document.getElementById('hud').classList.add('hidden');
-    }
-
     function renderLevelSelectGrid() {
       const gridContainer = document.getElementById('levels-grid');
       gridContainer.innerHTML = '';
@@ -1360,6 +1346,10 @@
       document.getElementById('btn-save-settings').addEventListener('click', () => {
         gameSettings.joysticksEnabled = document.getElementById('toggle-joysticks').checked;
         gameSettings.horizontalJoystickOnly = document.getElementById('toggle-horizontal-joystick').checked;
+        if (gameSettings.horizontalJoystickOnly) {
+          euler.x = 0;
+          if (camera) camera.quaternion.setFromEuler(euler);
+        }
         saveGameData();
         closeSettingsMenu();
       });
