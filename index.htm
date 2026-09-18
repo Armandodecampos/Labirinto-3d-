@@ -649,7 +649,7 @@
     mazeData = null;
 
     let scene, camera, renderer;
-    let flashlight, ambientLight;
+    let sunLight, ambientLight;
     let portalMesh, portalParticles;
 
     // Estado dos controles via Teclado e Touch
@@ -680,10 +680,10 @@
     function init3D() {
       const container = document.getElementById('game-container');
 
-      // Cena 3D
+      // Cena 3D (Céu aberto e dia claro)
       scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x020617);
-      scene.fog = new THREE.FogExp2(0x020617, 0.08);
+      scene.background = new THREE.Color(0x87ceeb);
+      scene.fog = new THREE.FogExp2(0x87ceeb, 0.015);
 
       // Câmera em Primeira Pessoa
       camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
@@ -697,24 +697,23 @@
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       container.appendChild(renderer.domElement);
 
-      // Luz Ambiente suave
-      ambientLight = new THREE.AmbientLight(0x1e293b, 0.6);
+      // Luz Ambiente clara de dia
+      ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
       scene.add(ambientLight);
 
-      // Lanterna acoplada à câmera do jogador (SpotLight)
-      flashlight = new THREE.SpotLight(0xfffbeb, 2.5, 25, Math.PI / 5, 0.4, 1);
-      flashlight.position.set(0, 0, 0);
-      flashlight.castShadow = true;
-      flashlight.shadow.mapSize.width = 1024;
-      flashlight.shadow.mapSize.height = 1024;
-      flashlight.shadow.camera.near = 0.5;
-      flashlight.shadow.camera.far = 25;
-
-      const flashlightTarget = new THREE.Object3D();
-      flashlightTarget.position.set(0, 0, -1);
-      camera.add(flashlight);
-      camera.add(flashlightTarget);
-      flashlight.target = flashlightTarget;
+      // Luz Solar Direcional (Sol no céu)
+      sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+      sunLight.position.set(30, 50, 20);
+      sunLight.castShadow = true;
+      sunLight.shadow.mapSize.width = 2048;
+      sunLight.shadow.mapSize.height = 2048;
+      sunLight.shadow.camera.near = 0.5;
+      sunLight.shadow.camera.far = 150;
+      sunLight.shadow.camera.left = -40;
+      sunLight.shadow.camera.right = 40;
+      sunLight.shadow.camera.top = 40;
+      sunLight.shadow.camera.bottom = -40;
+      scene.add(sunLight);
 
       // Gerar texturas reutilizáveis
       wallTexture = generateWallTexture();
@@ -730,7 +729,7 @@
       // Limpar objetos anteriores do labirinto
       const objectsToRemove = [];
       scene.children.forEach(child => {
-        if (child !== camera && child !== ambientLight) {
+        if (child !== camera && child !== ambientLight && child !== sunLight) {
           objectsToRemove.push(child);
         }
       });
@@ -759,11 +758,6 @@
       });
       floorTexture.repeat.set(cols * 0.5, rows * 0.5);
 
-      const ceilingMat = new THREE.MeshStandardMaterial({
-        color: 0x0f172a,
-        roughness: 0.9
-      });
-
       // Geometria única reaproveitável para otimização de performance
       const wallGeo = new THREE.BoxGeometry(CELL_SIZE, WALL_HEIGHT, CELL_SIZE);
       const mazeGroup = new THREE.Group();
@@ -791,12 +785,6 @@
       floorMesh.position.set(0, 0, 0);
       floorMesh.receiveShadow = true;
       mazeGroup.add(floorMesh);
-
-      // Teto do Labirinto
-      const ceilingMesh = new THREE.Mesh(floorGeo, ceilingMat);
-      ceilingMesh.rotation.x = Math.PI / 2;
-      ceilingMesh.position.set(0, WALL_HEIGHT, 0);
-      mazeGroup.add(ceilingMesh);
 
       scene.add(mazeGroup);
 
