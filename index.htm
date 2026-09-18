@@ -926,7 +926,7 @@
       }
 
       addExtraDeadEndsAndLoops() {
-        // 1. Abrir paredes internas aleatórias para criar loops e caminhos alternativos
+        // Abrir seletivamente algumas paredes internas para criar conexões extras e loops no labirinto
         for (let r = 2; r < this.rows - 2; r++) {
           for (let c = 2; c < this.cols - 2; c++) {
             if (this.grid[r][c] === 1) {
@@ -935,40 +935,11 @@
               const topOpen = this.grid[r - 1][c] === 0;
               const bottomOpen = this.grid[r + 1][c] === 0;
 
-              // Se for uma parede dividindo dois caminhos opostos
+              // Conecta corredores paralelos mantendo a estrutura limpa de labirinto
               if ((leftOpen && rightOpen && !topOpen && !bottomOpen) ||
                   (topOpen && bottomOpen && !leftOpen && !rightOpen)) {
-                if (Math.random() < 0.25) { // 25% de chance de abrir passagem
+                if (Math.random() < 0.12) { // 12% de chance de criar rota alternativa / loop
                   this.grid[r][c] = 0;
-                }
-              }
-            }
-          }
-        }
-
-        // 2. Escavar ramificações sem saída (entradas falsas / cul-de-sacs)
-        const numDeadEnds = Math.floor((this.cols * this.rows) / 5);
-        const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-        for (let i = 0; i < numDeadEnds; i++) {
-          const r = 1 + Math.floor(Math.random() * (this.rows - 2));
-          const c = 1 + Math.floor(Math.random() * (this.cols - 2));
-
-          if (this.grid[r][c] === 0) {
-            const shuffledDirs = dirs.slice().sort(() => Math.random() - 0.5);
-            for (const [dc, dr] of shuffledDirs) {
-              const nr1 = r + dr;
-              const nc1 = c + dc;
-              const nr2 = r + dr * 2;
-              const nc2 = c + dc * 2;
-
-              if (nr1 > 0 && nr1 < this.rows - 1 && nc1 > 0 && nc1 < this.cols - 1) {
-                if (this.grid[nr1][nc1] === 1) {
-                  this.grid[nr1][nc1] = 0;
-                  // 50% de chance de estender a entrada sem saída por mais 1 célula
-                  if (nr2 > 0 && nr2 < this.rows - 1 && nc2 > 0 && nc2 < this.cols - 1 && Math.random() < 0.5) {
-                    this.grid[nr2][nc2] = 0;
-                  }
-                  break;
                 }
               }
             }
