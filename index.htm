@@ -472,49 +472,307 @@
     const soundFX = new SoundEffects();
 
     /* =========================================================================
-     * GERADOR DE TEXTURAS PROCEDURAIS (Via 2D Canvas)
+     * TEMAS E CORES ALEATÓRIAS
      * ========================================================================= */
-    function generateWallTexture() {
+    function HSLToHex(h, s, l) {
+      s /= 100;
+      l /= 100;
+      const k = n => (n + h / 30) % 12;
+      const a = s * Math.min(l, 1 - l);
+      const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+      const toHex = x => Math.round(x * 255).toString(16).padStart(2, '0');
+      return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
+    }
+
+    function colorToRgb(colorStr) {
+      if (typeof colorStr === 'number') {
+        const r = (colorStr >> 16) & 255;
+        const g = (colorStr >> 8) & 255;
+        const b = colorStr & 255;
+        return [r, g, b];
+      }
+      if (colorStr.startsWith('#')) {
+        let hex = colorStr.slice(1);
+        if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+        const num = parseInt(hex, 16);
+        return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+      }
+      if (colorStr.startsWith('hsl')) {
+        const matches = colorStr.match(/\d+/g);
+        if (matches && matches.length >= 3) {
+          const h = parseInt(matches[0]), s = parseInt(matches[1]), l = parseInt(matches[2]);
+          const hex = HSLToHex(h, s, l);
+          return colorToRgb(hex);
+        }
+      }
+      return [120, 120, 120];
+    }
+
+    function blendColor(color1, color2, factor) {
+      const rgb1 = colorToRgb(color1);
+      const rgb2 = colorToRgb(color2);
+      const r = Math.round(rgb1[0] + (rgb2[0] - rgb1[0]) * factor);
+      const g = Math.round(rgb1[1] + (rgb2[1] - rgb1[1]) * factor);
+      const b = Math.round(rgb1[2] + (rgb2[2] - rgb1[2]) * factor);
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    function drawRoundedRect(ctx, x, y, width, height, radius) {
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+      ctx.lineTo(x + width, y + height - radius);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+      ctx.lineTo(x + radius, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+    }
+
+    function generateRandomTheme() {
+      const presets = [
+        {
+          name: "Tijolo Vermelho Clássico",
+          wallBase: '#8b261b', wallMortar: '#1c1514', wallAccent: '#b23b2b',
+          floorBase: '#1e293b', floorLine: '#334155',
+          sky: 0x87ceeb, fog: 0x87ceeb,
+          sunColor: 0xffffff, sunIntensity: 1.2, ambientColor: 0xffffff, ambientIntensity: 0.85,
+          portalColor: 0x10b981
+        },
+        {
+          name: "Caverna Sombria / Rocha",
+          wallBase: '#262930', wallMortar: '#0a0b0e', wallAccent: '#3a3f4d',
+          floorBase: '#0f1115', floorLine: '#1f242e',
+          sky: 0x090c15, fog: 0x0d111a,
+          sunColor: 0x38bdf8, sunIntensity: 0.8, ambientColor: 0x1e293b, ambientIntensity: 0.6,
+          portalColor: 0x38bdf8
+        },
+        {
+          name: "Cyberpunk Neon",
+          wallBase: '#0f172a', wallMortar: '#020617', wallAccent: '#1e1b4b',
+          floorBase: '#111827', floorLine: '#a855f7',
+          sky: 0x180b2b, fog: 0x240d3d,
+          sunColor: 0xf43f5e, sunIntensity: 1.1, ambientColor: 0xc084fc, ambientIntensity: 0.7,
+          portalColor: 0xf43f5e
+        },
+        {
+          name: "Templo do Deserto",
+          wallBase: '#b45309', wallMortar: '#451a03', wallAccent: '#d97706',
+          floorBase: '#78350f', floorLine: '#92400e',
+          sky: 0xfde047, fog: 0xf59e0b,
+          sunColor: 0xffedd5, sunIntensity: 1.4, ambientColor: 0xfef08a, ambientIntensity: 0.8,
+          portalColor: 0x06b6d4
+        },
+        {
+          name: "Floresta Esmeralda",
+          wallBase: '#064e3b', wallMortar: '#022c22', wallAccent: '#047857',
+          floorBase: '#065f46', floorLine: '#10b981',
+          sky: 0x022c22, fog: 0x064e3b,
+          sunColor: 0x6ee7b7, sunIntensity: 1.0, ambientColor: 0xa7f3d0, ambientIntensity: 0.8,
+          portalColor: 0xf59e0b
+        },
+        {
+          name: "Vulcão Lávico",
+          wallBase: '#450a0a', wallMortar: '#180202', wallAccent: '#7f1d1d',
+          floorBase: '#1c1917', floorLine: '#ef4444',
+          sky: 0x2a0808, fog: 0x450a0a,
+          sunColor: 0xf97316, sunIntensity: 1.2, ambientColor: 0xfca5a5, ambientIntensity: 0.7,
+          portalColor: 0x06b6d4
+        },
+        {
+          name: "Gelo Ártico",
+          wallBase: '#1e3a8a', wallMortar: '#0f172a', wallAccent: '#3b82f6',
+          floorBase: '#0284c7', floorLine: '#e0f2fe',
+          sky: 0xbae6fd, fog: 0x7dd3fc,
+          sunColor: 0xffffff, sunIntensity: 1.3, ambientColor: 0xbae6fd, ambientIntensity: 0.9,
+          portalColor: 0xec4899
+        },
+        {
+          name: "Ametista Mística",
+          wallBase: '#581c87', wallMortar: '#2e1065', wallAccent: '#7e22ce',
+          floorBase: '#3b0764', floorLine: '#a855f7',
+          sky: 0x1e1b4b, fog: 0x311042,
+          sunColor: 0xe879f9, sunIntensity: 1.1, ambientColor: 0xd8b4fe, ambientIntensity: 0.8,
+          portalColor: 0x22c55e
+        }
+      ];
+
+      if (Math.random() < 0.5) {
+        return presets[Math.floor(Math.random() * presets.length)];
+      }
+
+      // Gerador procedutal dinâmico por HSL aleatório
+      const h = Math.floor(Math.random() * 360);
+      const wallBase = `hsl(${h}, ${35 + Math.random()*45}%, ${20 + Math.random()*25}%)`;
+      const wallMortar = `hsl(${h}, ${15 + Math.random()*25}%, ${6 + Math.random()*10}%)`;
+      const wallAccent = `hsl(${h}, ${45 + Math.random()*45}%, ${35 + Math.random()*25}%)`;
+
+      const fh = (h + 30 + Math.random() * 60) % 360;
+      const floorBase = `hsl(${fh}, ${25 + Math.random()*35}%, ${12 + Math.random()*18}%)`;
+      const floorLine = `hsl(${fh}, ${35 + Math.random()*45}%, ${28 + Math.random()*25}%)`;
+
+      const skyH = (h + 180 + (Math.random() - 0.5) * 60) % 360;
+      const skyHexStr = HSLToHex(skyH, 50 + Math.random()*40, 20 + Math.random()*40);
+      const skyNum = parseInt(skyHexStr.replace('#', ''), 16);
+
+      const portalH = (h + 120 + Math.random()*120) % 360;
+      const portalNum = parseInt(HSLToHex(portalH, 80, 50).replace('#', ''), 16);
+
+      return {
+        name: "Procedural",
+        wallBase, wallMortar, wallAccent,
+        floorBase, floorLine,
+        sky: skyNum, fog: skyNum,
+        sunColor: 0xffffff, sunIntensity: 1.0 + Math.random() * 0.4,
+        ambientColor: skyNum, ambientIntensity: 0.6 + Math.random() * 0.3,
+        portalColor: portalNum
+      };
+    }
+
+    /* =========================================================================
+     * GERADOR DE TEXTURAS PROCEDURAIS DIVERSIFICADAS (Via 2D Canvas)
+     * ========================================================================= */
+    function generateWallTexture(theme) {
+      if (!theme) theme = generateRandomTheme();
+
       const canvas = document.createElement('canvas');
       canvas.width = 512;
       canvas.height = 512;
       const ctx = canvas.getContext('2d');
 
-      // Fundo escuro de pedra/tijolo
-      ctx.fillStyle = '#1e293b';
+      // Fundo/Argamassa da parede
+      ctx.fillStyle = theme.wallMortar || '#0f172a';
       ctx.fillRect(0, 0, 512, 512);
 
-      // Padrão de blocos de pedra
-      ctx.strokeStyle = '#0f172a';
-      ctx.lineWidth = 6;
-      const rows = 16;
-      const rowHeight = 512 / rows;
+      // Escolher formato de tijolo aleatoriamente para maior diversificação
+      const formatStyle = Math.floor(Math.random() * 4);
+      // 0: Tijolos Irregulares Variados, 1: Blocos Misto de Pedra, 2: Pedras Arredondadas (Cobblestone), 3: Painéis Modulares
 
-      for (let r = 0; r <= rows; r++) {
-        const y = r * rowHeight;
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(512, y);
-        ctx.stroke();
+      if (formatStyle === 0) {
+        // Estilo 0: Tijolos de Tamanhos e Alturas Irregulares
+        let y = 0;
+        while (y < 512) {
+          const rowHeight = Math.min(512 - y, Math.floor(22 + Math.random() * 28));
+          let x = 0;
+          const rowOffset = Math.random() * 40;
+          x -= rowOffset;
 
-        const cols = 8;
-        const colWidth = 512 / cols;
-        const offset = (r % 2) * (colWidth / 2);
+          while (x < 512 + 40) {
+            const brickWidth = Math.floor(35 + Math.random() * 65);
+            ctx.fillStyle = blendColor(theme.wallBase, theme.wallAccent, Math.random());
 
-        for (let c = 0; c <= cols + 1; c++) {
-          const x = c * colWidth - offset;
-          ctx.beginPath();
-          ctx.moveTo(x, y);
-          ctx.lineTo(x, y + rowHeight);
-          ctx.stroke();
+            ctx.fillRect(x, y, brickWidth, rowHeight);
+
+            // Relevo / Chanfro Superior e Esquerdo (Highlight)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
+            ctx.fillRect(x, y, brickWidth, 3);
+            ctx.fillRect(x, y, 3, rowHeight);
+
+            // Sombra Inferior e Direita (Shadow)
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.fillRect(x, y + rowHeight - 3, brickWidth, 3);
+            ctx.fillRect(x + brickWidth - 3, y, 3, rowHeight);
+
+            x += brickWidth + 4; // Espaçamento de argamassa
+          }
+          y += rowHeight + 4;
+        }
+      } else if (formatStyle === 1) {
+        // Estilo 1: Grandes Blocos de Pedra com Encaixe Desalinhado
+        const rows = 8 + Math.floor(Math.random() * 5);
+        const rowHeight = 512 / rows;
+
+        for (let r = 0; r < rows; r++) {
+          const y = r * rowHeight;
+          let x = 0;
+          const offset = (r % 2) * (512 / 4) + (Math.random() - 0.5) * 30;
+          x -= offset;
+
+          while (x < 512 + 100) {
+            const blockWidth = Math.floor(65 + Math.random() * 95);
+
+            ctx.fillStyle = blendColor(theme.wallBase, theme.wallAccent, Math.random());
+            ctx.fillRect(x, y, blockWidth, rowHeight);
+
+            // Detalhes internos de relevo de rocha
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.fillRect(x + 4, y + 4, blockWidth - 8, 4);
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
+            ctx.fillRect(x + blockWidth - 4, y, 4, rowHeight);
+            ctx.fillRect(x, y + rowHeight - 4, blockWidth, 4);
+
+            x += blockWidth + 5;
+          }
+        }
+      } else if (formatStyle === 2) {
+        // Estilo 2: Pedras Arredondadas (Cobblestone / Pedras do Campo)
+        const rows = 12;
+        const rowHeight = 512 / rows;
+
+        for (let r = 0; r < rows; r++) {
+          const y = r * rowHeight;
+          let x = 0;
+          while (x < 512) {
+            const stoneW = Math.floor(32 + Math.random() * 48);
+            const stoneH = Math.floor(rowHeight - 4);
+
+            ctx.fillStyle = blendColor(theme.wallBase, theme.wallAccent, Math.random());
+            drawRoundedRect(ctx, x + 2, y + 2, stoneW - 4, stoneH - 4, 6);
+            ctx.fill();
+
+            // Destaque de luz no topo da pedra
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+            drawRoundedRect(ctx, x + 4, y + 4, stoneW - 8, Math.max(2, (stoneH - 8) / 2), 4);
+            ctx.fill();
+
+            x += stoneW + 3;
+          }
+        }
+      } else {
+        // Estilo 3: Painéis Modulares Mosaicos com Parafusos/Rebites nos Cantos
+        const cols = 4 + Math.floor(Math.random() * 4);
+        const rows = cols;
+        const cellW = 512 / cols;
+        const cellH = 512 / rows;
+
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const x = c * cellW;
+            const y = r * cellH;
+
+            ctx.fillStyle = blendColor(theme.wallBase, theme.wallAccent, Math.random() * 0.6);
+            ctx.fillRect(x + 4, y + 4, cellW - 8, cellH - 8);
+
+            // Borda interna chanfrada
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x + 7, y + 7, cellW - 14, cellH - 14);
+
+            // Rebites/Parafusos nos cantos do painel
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+            const rRadius = 3;
+            [
+              [x + 11, y + 11],
+              [x + cellW - 11, y + 11],
+              [x + 11, y + cellH - 11],
+              [x + cellW - 11, y + cellH - 11]
+            ].forEach(([rx, ry]) => {
+              ctx.beginPath();
+              ctx.arc(rx, ry, rRadius, 0, Math.PI * 2);
+              ctx.fill();
+            });
+          }
         }
       }
 
-      // Adicionar ruído para textura orgânica de rocha
+      // Adicionar ruído para textura orgânica de rocha/superfície
       const imgData = ctx.getImageData(0, 0, 512, 512);
       const data = imgData.data;
       for (let i = 0; i < data.length; i += 4) {
-        const noise = (Math.random() - 0.5) * 25;
+        const noise = (Math.random() - 0.5) * 28;
         data[i] = Math.min(255, Math.max(0, data[i] + noise));
         data[i+1] = Math.min(255, Math.max(0, data[i+1] + noise));
         data[i+2] = Math.min(255, Math.max(0, data[i+2] + noise));
@@ -527,17 +785,19 @@
       return texture;
     }
 
-    function generateFloorTexture() {
+    function generateFloorTexture(theme) {
+      if (!theme) theme = generateRandomTheme();
+
       const canvas = document.createElement('canvas');
       canvas.width = 256;
       canvas.height = 256;
       const ctx = canvas.getContext('2d');
 
       // Piso de azulejos ou concreto escuro
-      ctx.fillStyle = '#0f172a';
+      ctx.fillStyle = theme.floorBase || '#0f172a';
       ctx.fillRect(0, 0, 256, 256);
 
-      ctx.strokeStyle = '#1e293b';
+      ctx.strokeStyle = theme.floorLine || '#1e293b';
       ctx.lineWidth = 4;
       const size = 64;
 
@@ -554,11 +814,21 @@
         ctx.stroke();
       }
 
-      // Detalhes de poeira
+      // Detalhes e variações nos azulejos do chão
+      for (let x = 0; x < 256; x += size) {
+        for (let y = 0; y < 256; y += size) {
+          if (Math.random() < 0.35) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.fillRect(x + 4, y + 4, size - 8, size - 8);
+          }
+        }
+      }
+
+      // Detalhes de ruído
       const imgData = ctx.getImageData(0, 0, 256, 256);
       const data = imgData.data;
       for (let i = 0; i < data.length; i += 4) {
-        const noise = (Math.random() - 0.5) * 15;
+        const noise = (Math.random() - 0.5) * 18;
         data[i] = Math.min(255, Math.max(0, data[i] + noise));
         data[i+1] = Math.min(255, Math.max(0, data[i+1] + noise));
         data[i+2] = Math.min(255, Math.max(0, data[i+2] + noise));
@@ -634,6 +904,9 @@
           }
         }
 
+        // Criar entradas sem saída (dead-ends) adicionais e caminhos alternativos/loops
+        this.addExtraDeadEndsAndLoops();
+
         // Definir Ponto de Saída no canto oposto (ou na célula livre mais distante)
         let exitC = this.cols - 2;
         let exitR = this.rows - 2;
@@ -650,6 +923,57 @@
           cols: this.cols,
           rows: this.rows
         };
+      }
+
+      addExtraDeadEndsAndLoops() {
+        // 1. Abrir paredes internas aleatórias para criar loops e caminhos alternativos
+        for (let r = 2; r < this.rows - 2; r++) {
+          for (let c = 2; c < this.cols - 2; c++) {
+            if (this.grid[r][c] === 1) {
+              const leftOpen = this.grid[r][c - 1] === 0;
+              const rightOpen = this.grid[r][c + 1] === 0;
+              const topOpen = this.grid[r - 1][c] === 0;
+              const bottomOpen = this.grid[r + 1][c] === 0;
+
+              // Se for uma parede dividindo dois caminhos opostos
+              if ((leftOpen && rightOpen && !topOpen && !bottomOpen) ||
+                  (topOpen && bottomOpen && !leftOpen && !rightOpen)) {
+                if (Math.random() < 0.25) { // 25% de chance de abrir passagem
+                  this.grid[r][c] = 0;
+                }
+              }
+            }
+          }
+        }
+
+        // 2. Escavar ramificações sem saída (entradas falsas / cul-de-sacs)
+        const numDeadEnds = Math.floor((this.cols * this.rows) / 5);
+        const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+        for (let i = 0; i < numDeadEnds; i++) {
+          const r = 1 + Math.floor(Math.random() * (this.rows - 2));
+          const c = 1 + Math.floor(Math.random() * (this.cols - 2));
+
+          if (this.grid[r][c] === 0) {
+            const shuffledDirs = dirs.slice().sort(() => Math.random() - 0.5);
+            for (const [dc, dr] of shuffledDirs) {
+              const nr1 = r + dr;
+              const nc1 = c + dc;
+              const nr2 = r + dr * 2;
+              const nc2 = c + dc * 2;
+
+              if (nr1 > 0 && nr1 < this.rows - 1 && nc1 > 0 && nc1 < this.cols - 1) {
+                if (this.grid[nr1][nc1] === 1) {
+                  this.grid[nr1][nc1] = 0;
+                  // 50% de chance de estender a entrada sem saída por mais 1 célula
+                  if (nr2 > 0 && nr2 < this.rows - 1 && nc2 > 0 && nc2 < this.cols - 1 && Math.random() < 0.5) {
+                    this.grid[nr2][nc2] = 0;
+                  }
+                  break;
+                }
+              }
+            }
+          }
+        }
       }
     }
 
@@ -741,7 +1065,35 @@
       setupTouchJoysticks();
     }
 
+    let currentTheme = null;
+
     function buildMazeWorld(level) {
+      // Gerar tema visual com cores e estilo aleatórios
+      currentTheme = generateRandomTheme();
+
+      // Atualizar iluminação e cenário (Céu e Névoa)
+      scene.background.set(currentTheme.sky);
+      if (scene.fog) {
+        scene.fog.color.set(currentTheme.fog);
+      } else {
+        scene.fog = new THREE.FogExp2(currentTheme.fog, 0.015);
+      }
+
+      if (ambientLight) {
+        ambientLight.color.set(currentTheme.ambientColor);
+        ambientLight.intensity = currentTheme.ambientIntensity;
+      }
+      if (sunLight) {
+        sunLight.color.set(currentTheme.sunColor);
+        sunLight.intensity = currentTheme.sunIntensity;
+      }
+
+      // Recriar texturas com o tema e formato de tijolos aleatórios
+      if (wallTexture) wallTexture.dispose();
+      if (floorTexture) floorTexture.dispose();
+      wallTexture = generateWallTexture(currentTheme);
+      floorTexture = generateFloorTexture(currentTheme);
+
       // Limpar objetos anteriores do labirinto
       const objectsToRemove = [];
       scene.children.forEach(child => {
@@ -827,9 +1179,11 @@
       const portalGroup = new THREE.Group();
       portalGroup.position.set(exitX, 0, exitZ);
 
+      const pColor = (currentTheme && currentTheme.portalColor) ? currentTheme.portalColor : 0x10b981;
+
       // Anel brilhante do Portal
       const torusGeo = new THREE.TorusGeometry(1.2, 0.15, 16, 32);
-      const torusMat = new THREE.MeshBasicMaterial({ color: 0x10b981, wireframe: true });
+      const torusMat = new THREE.MeshBasicMaterial({ color: pColor, wireframe: true });
       portalMesh = new THREE.Mesh(torusGeo, torusMat);
       portalMesh.position.y = 1.8;
       portalGroup.add(portalMesh);
@@ -837,7 +1191,7 @@
       // Feixe de luz central
       const beamGeo = new THREE.CylinderGeometry(0.8, 0.8, WALL_HEIGHT, 16, 1, true);
       const beamMat = new THREE.MeshBasicMaterial({
-        color: 0x34d399,
+        color: pColor,
         transparent: true,
         opacity: 0.35,
         side: THREE.DoubleSide
@@ -847,7 +1201,7 @@
       portalGroup.add(beamMesh);
 
       // Luz pontual emitida pela saída
-      const portalLight = new THREE.PointLight(0x10b981, 3, 12);
+      const portalLight = new THREE.PointLight(pColor, 3, 12);
       portalLight.position.y = 2;
       portalGroup.add(portalLight);
 
@@ -863,7 +1217,7 @@
       particleGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
       const particleMat = new THREE.PointsMaterial({
         size: 0.08,
-        color: 0x6ee7b7,
+        color: pColor,
         transparent: true,
         opacity: 0.8
       });
